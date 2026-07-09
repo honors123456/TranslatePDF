@@ -1,0 +1,4 @@
+pdf2zh-next
+fastapi
+uvicorn[standard]
+python-multipart

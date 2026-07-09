@@ -1,0 +1,32 @@
+# dependencies
+node_modules/
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# build
+.next/
+dist/
+build/
+*.egg-info/
+
+# env & secrets
+.env
+.env.*
+!.env.example
+
+# runtime data (uploads/outputs/samples)
+data/
+*.db
+
+# system
+.DS_Store
+Thumbs.db
+
+# editor
+.vscode/
+.idea/
+
+# AI local config
+.claude/settings.local.json
