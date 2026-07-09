@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-阶段 0：管线验证 —— 用 pdf2zh-next 跑通「PDF + DeepSeek Key → 双语 PDF」。此步不通过则重选核心引擎。
+阶段 1：后端 API —— 上传 / 创建任务 / SSE 进度 / 下载 / 取消。
 
 ## 已完成
 
@@ -13,21 +13,22 @@
 - 2026-07-09 验证脚本 scripts/validate_pipeline.py：配置构造与 validate_settings() 已用 dummy key 跑通（DeepSeekSettings 会 transform 为 OpenAI 兼容配置，指向 https://api.deepseek.com/v1）。
 - 2026-07-09 babeldoc 资产预下载完成（DocLayout YOLO onnx、34 字体、146 CMap，缓存于 ~/.cache/babeldoc）。注：pdf2zh_next 2.9.0 的 --warmup 在下载完成后仍断言需要输入文件而退出码 1，属上游小缺陷，资产本身完整。
 
+- 2026-07-09 **阶段 0 管线验证通过**：attention.pdf 前 2 页经 DeepSeek（deepseek-chat）翻译，37.4s 产出 mono + dual 两个 PDF；人工核对双语版排版完整（左右对照、公式/页眉/脚注保留、中文字体正常）。少量段落（作者名等）因译文与原文相同触发 fallback 警告，属正常行为。
+
 ## 进行中
 
-- 阶段 0 管线验证：等待 DeepSeek API Key 跑真实翻译。
+- 阶段 1 后端 API：尚未开始。
 
 ## 待办
 
-- 阶段 1 后端：上传 / 创建任务 / SSE 进度 / 下载 / 取消。
-- 阶段 2 翻译适配：DeepSeek → 自定义 OpenAI 兼容 → Claude → Gemini。
+- 阶段 2 翻译适配：DeepSeek → 自定义 OpenAI 兼容 → Claude → Gemini。注：pdf2zh-next 无 Anthropic 直连类，Claude 走 OpenAICompatibleSettings + Anthropic 的 OpenAI 兼容端点。
 - 阶段 3 前端：上传页、设置页（引擎+Key+连通性测试）、进度页、预览下载页。
 - 阶段 4 打包：Docker Compose + 端到端验证。
 
 ## 阻塞
 
-- 管线验证需要用户提供 DeepSeek API Key（环境变量方式）。
+- 无。
 
 ## 最近验证
 
-- 无（尚未运行任何管线）。
+- 2026-07-09 scripts/validate_pipeline.py + DEEPSEEK_API_KEY：2 页翻译 37.4s，产出 data/outputs/attention.no_watermark.zh.{mono,dual}.pdf，双语排版人工核对通过。
