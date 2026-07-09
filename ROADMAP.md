@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-阶段 1：后端 API —— 上传 / 创建任务 / SSE 进度 / 下载 / 取消。
+阶段 3：前端 —— 上传页、设置页（引擎+Key+连通性测试）、进度页、预览下载页。
 
 ## 已完成
 
@@ -15,20 +15,26 @@
 
 - 2026-07-09 **阶段 0 管线验证通过**：attention.pdf 前 2 页经 DeepSeek（deepseek-chat）翻译，37.4s 产出 mono + dual 两个 PDF；人工核对双语版排版完整（左右对照、公式/页眉/脚注保留、中文字体正常）。少量段落（作者名等）因译文与原文相同触发 fallback 警告，属正常行为。
 
+- 2026-07-09 **阶段 1 后端 API 完成并端到端验证**：backend/app/{main,tasks,engines}.py。上传+建任务（multipart，100MB 上限）、SSE 进度（轮询快照式，全阶段推送后自动关流）、下载 dual/mono（200，4.2MB/2.1MB）、取消（3 秒内转 cancelled）全部实测通过；uvicorn 日志核查 API Key 零泄漏。
+- 2026-07-09 **阶段 2 翻译适配层完成（代码级）**：engines.py 统一四引擎——DeepSeek（已实测）、自定义 OpenAI 兼容、Claude（走 https://api.anthropic.com/v1/ OpenAI 兼容端点，官方文档已核实，默认 claude-opus-4-8）、Gemini（默认 gemini-2.5-flash，待确认）。Claude/Gemini 需真实 Key 才能实测。
+
 ## 进行中
 
-- 阶段 1 后端 API：尚未开始。
+- 阶段 3 前端：尚未开始。
 
 ## 待办
-
-- 阶段 2 翻译适配：DeepSeek → 自定义 OpenAI 兼容 → Claude → Gemini。注：pdf2zh-next 无 Anthropic 直连类，Claude 走 OpenAICompatibleSettings + Anthropic 的 OpenAI 兼容端点。
-- 阶段 3 前端：上传页、设置页（引擎+Key+连通性测试）、进度页、预览下载页。
 - 阶段 4 打包：Docker Compose + 端到端验证。
 
 ## 阻塞
 
 - 无。
 
+## 待确认
+
+- Claude / Gemini 引擎映射未用真实 Key 实测（DeepSeek 已实测通过）。
+- Gemini 默认模型名 gemini-2.5-flash 未核实是否最新。
+
 ## 最近验证
 
+- 2026-07-09 后端 API 端到端：POST /api/tasks（attention.pdf 第 1 页 + DeepSeek）→ SSE 进度全阶段推送 → done → 下载 dual/mono 成功 → 第二任务 cancel 成功。
 - 2026-07-09 scripts/validate_pipeline.py + DEEPSEEK_API_KEY：2 页翻译 37.4s，产出 data/outputs/attention.no_watermark.zh.{mono,dual}.pdf，双语排版人工核对通过。
