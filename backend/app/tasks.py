@@ -91,7 +91,7 @@ class TaskManager:
                 lang_in=lang_in,
                 lang_out=lang_out,
                 output=str(self.output_root / task_id),
-                qps=4,
+                qps=20,
             ),
             pdf=PDFSettings(
                 pages=pages,
