@@ -1,42 +1,20 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  DEFAULT_MODELS,
-  EngineConfig,
-  EngineType,
   TaskSnapshot,
   cancelTask,
   createTask,
   downloadUrl,
   eventsUrl,
-  testConnection,
 } from "@/lib/api";
-
-const SETTINGS_KEY = "tpdf-settings";
-
-interface Settings {
-  engineType: EngineType;
-  apiKeys: Partial<Record<EngineType, string>>;
-  models: Partial<Record<EngineType, string>>;
-  baseUrl: string;
-  langOut: string;
-}
-
-const defaultSettings: Settings = {
-  engineType: "deepseek",
-  apiKeys: {},
-  models: {},
-  baseUrl: "",
-  langOut: "zh",
-};
-
-const ENGINE_LABELS: Record<EngineType, string> = {
-  deepseek: "DeepSeek",
-  openai_compatible: "OpenAI 兼容端点",
-  claude: "Claude",
-  gemini: "Gemini",
-};
+import {
+  Settings,
+  defaultSettings,
+  engineConfigFrom,
+  loadSettings,
+} from "@/lib/settings";
 
 const STATUS_LABELS: Record<TaskSnapshot["status"], string> = {
   running: "翻译中",
@@ -47,41 +25,25 @@ const STATUS_LABELS: Record<TaskSnapshot["status"], string> = {
 
 export default function Home() {
   const [settings, setSettings] = useState<Settings>(defaultSettings);
-  const [loaded, setLoaded] = useState(false);
   const [tasks, setTasks] = useState<TaskSnapshot[]>([]);
-  const [file, setFile] = useState<File | null>(null);
+  const [currentId, setCurrentId] = useState<string | null>(null);
   const [pages, setPages] = useState("");
-  const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
-  const [previewId, setPreviewId] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const sourcesRef = useRef<Map<string, EventSource>>(new Map());
-
-  // 设置持久化：只存浏览器 localStorage（BYOK）
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(SETTINGS_KEY);
-      if (raw) setSettings({ ...defaultSettings, ...JSON.parse(raw) });
-    } catch {}
-    setLoaded(true);
-  }, []);
-  useEffect(() => {
-    if (loaded) localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-  }, [settings, loaded]);
+  // 原文预览用浏览器本地 objectURL，不经后端；仅本次会话有效
+  const originalUrlsRef = useRef<Map<string, string>>(new Map());
 
   useEffect(() => {
+    setSettings(loadSettings());
     const sources = sourcesRef.current;
-    return () => sources.forEach((s) => s.close());
-  }, []);
-
-  const engineConfig = useCallback((): EngineConfig => {
-    const t = settings.engineType;
-    return {
-      type: t,
-      api_key: settings.apiKeys[t] ?? "",
-      model: settings.models[t] || undefined,
-      base_url: t === "openai_compatible" ? settings.baseUrl : undefined,
+    const urls = originalUrlsRef.current;
+    return () => {
+      sources.forEach((s) => s.close());
+      urls.forEach((u) => URL.revokeObjectURL(u));
     };
-  }, [settings]);
+  }, []);
 
   const watchTask = useCallback((id: string) => {
     const source = new EventSource(eventsUrl(id));
@@ -100,267 +62,237 @@ export default function Home() {
     };
   }, []);
 
-  async function handleSubmit() {
-    if (!file) return setNotice("请先选择 PDF 文件");
-    const engine = engineConfig();
-    if (!engine.api_key) return setNotice("请先填写 API Key");
-    setBusy(true);
-    setNotice("");
-    try {
-      const task = await createTask(file, engine, "en", settings.langOut, pages);
-      setTasks((prev) => [task, ...prev]);
-      watchTask(task.id);
-      setFile(null);
-    } catch (err) {
-      setNotice(`提交失败：${err instanceof Error ? err.message : err}`);
-    } finally {
-      setBusy(false);
-    }
+  const startTranslation = useCallback(
+    async (file: File) => {
+      if (!file.name.toLowerCase().endsWith(".pdf")) {
+        return setNotice("只支持 PDF 文件");
+      }
+      const engine = engineConfigFrom(loadSettings());
+      if (!engine.api_key) {
+        return setNotice("尚未配置 API Key，请先到「设置」填写");
+      }
+      setNotice("");
+      try {
+        const task = await createTask(
+          file,
+          engine,
+          "en",
+          loadSettings().langOut,
+          pages,
+        );
+        originalUrlsRef.current.set(task.id, URL.createObjectURL(file));
+        setTasks((prev) => [task, ...prev]);
+        setCurrentId(task.id);
+        watchTask(task.id);
+      } catch (err) {
+        setNotice(`提交失败：${err instanceof Error ? err.message : err}`);
+      }
+    },
+    [pages, watchTask],
+  );
+
+  const current = tasks.find((t) => t.id === currentId) ?? null;
+
+  // ---------- 全屏双栏预览（翻译中/完成） ----------
+  if (current) {
+    const originalUrl = originalUrlsRef.current.get(current.id);
+    return (
+      <div className="flex flex-col h-screen">
+        <header className="flex items-center gap-4 px-4 py-2 border-b border-gray-200 dark:border-gray-700 text-sm">
+          <button
+            onClick={() => setCurrentId(null)}
+            className="text-blue-600 hover:underline shrink-0"
+          >
+            ← 新任务
+          </button>
+          <span className="truncate font-medium">{current.filename}</span>
+          <span
+            className={`shrink-0 text-xs px-2 py-0.5 rounded-full ${
+              current.status === "done"
+                ? "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300"
+                : current.status === "running"
+                  ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300"
+                  : "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300"
+            }`}
+          >
+            {STATUS_LABELS[current.status]}
+          </span>
+          {current.status === "running" && (
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <div className="h-1.5 flex-1 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+                <div
+                  className="h-full bg-blue-500 transition-all"
+                  style={{ width: `${current.overall_progress}%` }}
+                />
+              </div>
+              <span className="shrink-0 text-xs text-gray-500">
+                {current.stage} {current.overall_progress}%
+              </span>
+              <button
+                onClick={() => cancelTask(current.id)}
+                className="shrink-0 text-red-500 hover:underline"
+              >
+                取消
+              </button>
+            </div>
+          )}
+          <div className="ml-auto flex gap-3 shrink-0">
+            {current.has_dual && (
+              <a
+                href={downloadUrl(current.id, "dual")}
+                className="text-blue-600 hover:underline"
+              >
+                下载双语版
+              </a>
+            )}
+            {current.has_mono && (
+              <a
+                href={downloadUrl(current.id, "mono")}
+                className="text-blue-600 hover:underline"
+              >
+                下载纯译文
+              </a>
+            )}
+          </div>
+        </header>
+
+        <div className="flex-1 grid grid-cols-2 min-h-0">
+          {/* 左栏：原文 */}
+          <div className="border-r border-gray-200 dark:border-gray-700 min-h-0">
+            {originalUrl ? (
+              <iframe
+                src={originalUrl}
+                className="w-full h-full"
+                title="original"
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center text-sm text-gray-400">
+                原文预览不可用（页面刷新后丢失，重新上传即可）
+              </div>
+            )}
+          </div>
+          {/* 右栏：译文（翻译中显示进度，完成后显示纯译文 PDF） */}
+          <div className="min-h-0">
+            {current.status === "done" && current.has_mono ? (
+              <iframe
+                src={downloadUrl(current.id, "mono", true)}
+                className="w-full h-full"
+                title="translated"
+              />
+            ) : current.status === "running" ? (
+              <div className="flex h-full flex-col items-center justify-center gap-4 px-10">
+                <div className="w-full max-w-md h-2 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+                  <div
+                    className="h-full bg-blue-500 transition-all"
+                    style={{ width: `${current.overall_progress}%` }}
+                  />
+                </div>
+                <p className="text-sm text-gray-500">
+                  {current.stage || "准备中"} · {current.overall_progress}%
+                </p>
+                <p className="text-xs text-gray-400">
+                  翻译完成后此处自动显示译文
+                </p>
+              </div>
+            ) : (
+              <div className="flex h-full items-center justify-center px-10">
+                <p className="text-sm text-red-500 break-all">
+                  {current.error ?? `任务${STATUS_LABELS[current.status]}`}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
   }
 
-  async function handleTest() {
-    const engine = engineConfig();
-    if (!engine.api_key) return setNotice("请先填写 API Key");
-    setBusy(true);
-    setNotice("测试中…");
-    try {
-      const result = await testConnection(engine);
-      setNotice(
-        result.ok
-          ? `连通性正常（${result.model}）`
-          : `连接失败（HTTP ${result.status ?? "?"}）：${result.detail ?? ""}`,
-      );
-    } catch (err) {
-      setNotice(`测试失败：${err instanceof Error ? err.message : err}`);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const t = settings.engineType;
-
+  // ---------- 全屏上传/拖拽（空闲） ----------
   return (
-    <main className="mx-auto max-w-3xl px-4 py-10 space-y-8">
-      <header>
-        <h1 className="text-2xl font-bold">TranslationPDF</h1>
-        <p className="text-sm text-gray-500 mt-1">
-          上传 PDF，用自己的 API Key 翻译，保留原排版，双语对照。
-        </p>
+    <div
+      className={`flex flex-col h-screen ${dragging ? "bg-blue-50 dark:bg-gray-900" : ""}`}
+      onDragOver={(e) => {
+        e.preventDefault();
+        setDragging(true);
+      }}
+      onDragLeave={(e) => {
+        if (e.currentTarget === e.target) setDragging(false);
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        setDragging(false);
+        const file = e.dataTransfer.files?.[0];
+        if (file) startTranslation(file);
+      }}
+    >
+      <header className="flex items-center justify-between px-6 py-3 border-b border-gray-200 dark:border-gray-700">
+        <h1 className="text-lg font-bold">TranslationPDF</h1>
+        <Link href="/settings" className="text-sm text-blue-600 hover:underline">
+          设置
+        </Link>
       </header>
 
-      {/* 引擎设置 */}
-      <section className="rounded-xl border border-gray-200 dark:border-gray-700 p-5 space-y-4">
-        <h2 className="font-semibold">翻译引擎</h2>
-        <div className="flex flex-wrap gap-2">
-          {(Object.keys(ENGINE_LABELS) as EngineType[]).map((key) => (
-            <button
-              key={key}
-              onClick={() => setSettings((s) => ({ ...s, engineType: key }))}
-              className={`px-3 py-1.5 rounded-full text-sm border transition ${
-                t === key
-                  ? "bg-blue-600 text-white border-blue-600"
-                  : "border-gray-300 dark:border-gray-600 hover:border-blue-400"
-              }`}
-            >
-              {ENGINE_LABELS[key]}
-            </button>
-          ))}
+      <main className="flex-1 flex flex-col items-center justify-center gap-6 px-6">
+        <div
+          onClick={() => fileInputRef.current?.click()}
+          className={`w-full max-w-2xl cursor-pointer rounded-2xl border-2 border-dashed p-16 text-center transition ${
+            dragging
+              ? "border-blue-500 bg-blue-50 dark:bg-gray-800"
+              : "border-gray-300 dark:border-gray-600 hover:border-blue-400"
+          }`}
+        >
+          <p className="text-xl font-medium">
+            拖拽 PDF 到页面任意位置，或点击选择文件
+          </p>
+          <p className="mt-2 text-sm text-gray-500">
+            上传即开始翻译 · 引擎 {settings.engineType} · 译为{" "}
+            {settings.langOut === "zh" ? "中文" : settings.langOut}
+          </p>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = "";
+              if (file) startTranslation(file);
+            }}
+          />
         </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <label className="block text-sm">
-            <span className="text-gray-600 dark:text-gray-300">API Key</span>
-            <input
-              type="password"
-              value={settings.apiKeys[t] ?? ""}
-              onChange={(e) =>
-                setSettings((s) => ({
-                  ...s,
-                  apiKeys: { ...s.apiKeys, [t]: e.target.value },
-                }))
-              }
-              placeholder="sk-..."
-              className="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-transparent px-3 py-2"
-            />
-          </label>
-          <label className="block text-sm">
-            <span className="text-gray-600 dark:text-gray-300">模型</span>
-            <input
-              value={settings.models[t] ?? ""}
-              onChange={(e) =>
-                setSettings((s) => ({
-                  ...s,
-                  models: { ...s.models, [t]: e.target.value },
-                }))
-              }
-              placeholder={DEFAULT_MODELS[t] || "必填"}
-              className="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-transparent px-3 py-2"
-            />
-          </label>
-          {t === "openai_compatible" && (
-            <label className="block text-sm sm:col-span-2">
-              <span className="text-gray-600 dark:text-gray-300">Base URL</span>
-              <input
-                value={settings.baseUrl}
-                onChange={(e) =>
-                  setSettings((s) => ({ ...s, baseUrl: e.target.value }))
-                }
-                placeholder="https://api.example.com/v1"
-                className="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-transparent px-3 py-2"
-              />
-            </label>
-          )}
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleTest}
-            disabled={busy}
-            className="rounded-lg border border-gray-300 dark:border-gray-600 px-4 py-2 text-sm hover:border-blue-400 disabled:opacity-50"
-          >
-            测试连通性
-          </button>
-          <span className="text-xs text-gray-500">
-            Key 只存浏览器本地，随任务传给后端内存使用，不落盘。
-          </span>
-        </div>
-      </section>
 
-      {/* 上传与提交 */}
-      <section className="rounded-xl border border-gray-200 dark:border-gray-700 p-5 space-y-4">
-        <h2 className="font-semibold">翻译任务</h2>
-        <div className="grid gap-3 sm:grid-cols-3">
-          <label className="block text-sm sm:col-span-2">
-            <span className="text-gray-600 dark:text-gray-300">PDF 文件</span>
-            <input
-              type="file"
-              accept=".pdf"
-              key={file ? file.name : "empty"}
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-              className="mt-1 w-full text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-blue-50 file:px-3 file:py-2 file:text-blue-700 dark:file:bg-gray-800 dark:file:text-blue-300"
-            />
-          </label>
-          <label className="block text-sm">
-            <span className="text-gray-600 dark:text-gray-300">
-              页码范围（可选）
-            </span>
-            <input
-              value={pages}
-              onChange={(e) => setPages(e.target.value)}
-              placeholder="如 1-5，留空全文"
-              className="mt-1 w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-transparent px-3 py-2"
-            />
-          </label>
-        </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleSubmit}
-            disabled={busy || !file}
-            className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-          >
-            开始翻译
-          </button>
-          <select
-            value={settings.langOut}
-            onChange={(e) =>
-              setSettings((s) => ({ ...s, langOut: e.target.value }))
-            }
-            className="rounded-lg border border-gray-300 dark:border-gray-600 bg-transparent px-3 py-2 text-sm"
-          >
-            <option value="zh">译为中文</option>
-            <option value="en">译为英文</option>
-            <option value="ja">译为日文</option>
-          </select>
-        </div>
+        <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+          页码范围（可选）
+          <input
+            value={pages}
+            onChange={(e) => setPages(e.target.value)}
+            onClick={(e) => e.stopPropagation()}
+            placeholder="如 1-5，留空全文"
+            className="w-40 rounded-lg border border-gray-300 dark:border-gray-600 bg-transparent px-3 py-1.5"
+          />
+        </label>
+
         {notice && <p className="text-sm text-amber-600">{notice}</p>}
-      </section>
 
-      {/* 任务列表 */}
-      {tasks.length > 0 && (
-        <section className="space-y-3">
-          <h2 className="font-semibold">任务</h2>
-          {tasks.map((task) => (
-            <div
-              key={task.id}
-              className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 space-y-2"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="truncate text-sm font-medium">
-                  {task.filename}
-                </span>
-                <span
-                  className={`text-xs px-2 py-0.5 rounded-full ${
-                    task.status === "done"
-                      ? "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300"
-                      : task.status === "running"
-                        ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300"
-                        : "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300"
-                  }`}
-                >
+        {tasks.length > 0 && (
+          <div className="w-full max-w-2xl space-y-1">
+            <h2 className="text-sm font-medium text-gray-500">本次会话任务</h2>
+            {tasks.map((task) => (
+              <button
+                key={task.id}
+                onClick={() => setCurrentId(task.id)}
+                className="flex w-full items-center justify-between rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-sm hover:border-blue-400"
+              >
+                <span className="truncate">{task.filename}</span>
+                <span className="shrink-0 text-xs text-gray-500">
                   {STATUS_LABELS[task.status]}
+                  {task.status === "running" && ` ${task.overall_progress}%`}
                 </span>
-              </div>
-              {task.status === "running" && (
-                <>
-                  <div className="h-2 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
-                    <div
-                      className="h-full bg-blue-500 transition-all"
-                      style={{ width: `${task.overall_progress}%` }}
-                    />
-                  </div>
-                  <p className="text-xs text-gray-500">
-                    {task.stage} · {task.overall_progress}%
-                  </p>
-                </>
-              )}
-              {task.error && (
-                <p className="text-xs text-red-500 break-all">{task.error}</p>
-              )}
-              <div className="flex flex-wrap gap-2 text-sm">
-                {task.status === "running" && (
-                  <button
-                    onClick={() => cancelTask(task.id)}
-                    className="text-red-500 hover:underline"
-                  >
-                    取消
-                  </button>
-                )}
-                {task.has_dual && (
-                  <>
-                    <button
-                      onClick={() =>
-                        setPreviewId(previewId === task.id ? null : task.id)
-                      }
-                      className="text-blue-600 hover:underline"
-                    >
-                      {previewId === task.id ? "收起预览" : "在线预览"}
-                    </button>
-                    <a
-                      href={downloadUrl(task.id, "dual")}
-                      className="text-blue-600 hover:underline"
-                    >
-                      下载双语版
-                    </a>
-                  </>
-                )}
-                {task.has_mono && (
-                  <a
-                    href={downloadUrl(task.id, "mono")}
-                    className="text-blue-600 hover:underline"
-                  >
-                    下载纯译文
-                  </a>
-                )}
-              </div>
-              {previewId === task.id && task.has_dual && (
-                <iframe
-                  src={downloadUrl(task.id, "dual", true)}
-                  className="w-full h-[75vh] rounded-lg border border-gray-200 dark:border-gray-700"
-                  title={`preview-${task.id}`}
-                />
-              )}
-            </div>
-          ))}
-        </section>
-      )}
-    </main>
+              </button>
+            ))}
+          </div>
+        )}
+      </main>
+    </div>
   );
 }
