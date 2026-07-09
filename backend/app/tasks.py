@@ -9,6 +9,8 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .clean_pdf import clean_outputs
+
 from pdf2zh_next.config.model import (
     PDFSettings,
     SettingsModel,
@@ -118,6 +120,8 @@ class TaskManager:
                     task.mono_path = Path(mono) if mono else None
                     task.dual_path = Path(dual) if dual else None
                     task.overall_progress = 100.0
+                    # 后处理：清除上游遗留的控制字符
+                    clean_outputs(task.mono_path, task.dual_path)
                     task.status = "done"
                     break
         except asyncio.CancelledError:
