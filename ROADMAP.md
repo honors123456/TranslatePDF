@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-阶段 4：打包 —— Docker Compose + 端到端验证。
+MVP 完成，待浏览器人工点验。
 
 ## 已完成
 
@@ -21,13 +21,15 @@
 - 2026-07-09 后端补充：/api/test-connection（四引擎统一走各自 OpenAI 兼容端点发最小请求，DeepSeek 实测 ok）；下载接口支持 inline=true 供 iframe 预览。
 - 2026-07-09 **阶段 3 前端完成**：Next.js 16 + React 19 + Tailwind 4 单页应用（frontend/app/page.tsx + lib/api.ts）——引擎设置（四引擎切换、Key/模型/BaseURL、localStorage 持久化、连通性测试）、上传提交（页码范围、目标语言）、任务列表（SSE 实时进度条、取消、下载 dual/mono、iframe 在线预览）。npm run build 通过；dev 服务 SSR 冒烟验证八项 UI 元素齐全。
 
+- 2026-07-09 **阶段 4 改为启动脚本方案**（本机无 Docker，经主人确认不装）：start.bat → scripts/start.ps1，一键拉起后端 uvicorn + 前端 next start 并打开浏览器；首次运行自动构建前端。实测：双服务启动成功、health ok、页面渲染正常；踩坑记录——PS 5.1 要求 .ps1 为 UTF-8 带 BOM，否则中文注释按 GBK 解析导致语法错误。CLAUDE.md 部署条目已同步修订。
+
 ## 进行中
 
-- 阶段 4 打包：尚未开始。
+- 无。
 
 ## 待办
 
-- 浏览器人工点验前端完整交互流程（上传→进度→预览→下载）。
+- 浏览器人工点验前端完整交互流程（上传→进度→预览→下载）。注意：测试用 DeepSeek Key 已作废（实测 401），需在设置页填新 Key。
 
 ## 阻塞
 

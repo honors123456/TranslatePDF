@@ -12,7 +12,7 @@
 - 后端：Python 3.12 + FastAPI，PDF 翻译管线基于 `pdf2zh-next`（BabelDOC 官方调用入口），API 用 `high_level.do_translate_async_stream`。
 - 前端：Next.js + TypeScript + Tailwind，pdf.js 在线预览。
 - 任务：FastAPI BackgroundTask + SSE 推进度，任务状态内存态，不上 Celery/Redis。
-- 部署：Docker Compose 单机。
+- 部署：本机运行，`start.bat` 一键启动前后端（不用 Docker，2026-07-09 决定）。
 
 ## 目录结构
 
