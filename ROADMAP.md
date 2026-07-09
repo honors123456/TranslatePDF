@@ -27,6 +27,8 @@ MVP 完成，待浏览器人工点验。
 
 - 2026-07-09 前端改版（按主人反馈）：引擎配置独立为 /settings 页（lib/settings.ts 共享 localStorage 读写）；主页改全屏拖拽上传（拖入即翻译）；翻译开始即切全屏双栏预览——左栏原文（浏览器 objectURL，不经后端）、右栏翻译中显示进度、完成后自动加载纯译文 PDF。构建通过，双页面冒烟验证通过。
 
+- 2026-07-09 版面分析 GPU 加速：换装 onnxruntime-directml + app/gpu_patch.py（代理命名空间只覆盖 doclayout 模块的 provider 选择，上游 babeldoc 在非 macOS 强制 CPU）。实测 attention.pdf 5 页：CPU 0.89s/页 → DML 0.11s/页（约 8 倍）。回退：卸载 onnxruntime-directml 装回 onnxruntime 即自动回 CPU。
+
 ## 进行中
 
 - 无。

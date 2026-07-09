@@ -2,3 +2,8 @@ pdf2zh-next
 fastapi
 uvicorn[standard]
 python-multipart
+
+# GPU 版面分析（可选但推荐）：pdf2zh-next 会带入 CPU 版 onnxruntime，
+# 安装后需替换为 DirectML 版，配合 app/gpu_patch.py 生效：
+#   pip uninstall -y onnxruntime && pip install onnxruntime-directml
+onnxruntime-directml

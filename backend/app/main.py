@@ -11,8 +11,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import ValidationError
 
+from . import gpu_patch
 from .engines import EngineConfig, test_connection
 from .tasks import TaskManager
+
+gpu_patch.apply()
 
 DATA_ROOT = Path(__file__).resolve().parent.parent.parent / "data"
 UPLOAD_DIR = DATA_ROOT / "uploads"
