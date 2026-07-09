@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import ValidationError
 
-from .engines import EngineConfig
+from .engines import EngineConfig, test_connection
 from .tasks import TaskManager
 
 DATA_ROOT = Path(__file__).resolve().parent.parent.parent / "data"
@@ -33,6 +33,16 @@ manager = TaskManager(output_root=OUTPUT_DIR)
 @app.get("/api/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.post("/api/test-connection")
+async def test_engine_connection(engine: EngineConfig):
+    try:
+        return await test_connection(engine)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except Exception as exc:  # 网络错误等
+        return {"ok": False, "detail": str(exc)}
 
 
 @app.post("/api/tasks")
@@ -106,16 +116,21 @@ async def task_events(task_id: str):
 
 
 @app.get("/api/tasks/{task_id}/download")
-async def download(task_id: str, kind: str = "dual"):
+async def download(task_id: str, kind: str = "dual", inline: bool = False):
     task = manager.get(task_id)
     if task is None:
         raise HTTPException(404, "task not found")
-    path = {"dual": task.dual_path, "mono": task.mono_path}.get(kind)
     if kind not in ("dual", "mono"):
         raise HTTPException(400, "kind must be dual or mono")
+    path = {"dual": task.dual_path, "mono": task.mono_path}[kind]
     if path is None or not path.exists():
         raise HTTPException(404, f"{kind} output not available")
-    return FileResponse(path, media_type="application/pdf", filename=path.name)
+    return FileResponse(
+        path,
+        media_type="application/pdf",
+        filename=path.name,
+        content_disposition_type="inline" if inline else "attachment",
+    )
 
 
 @app.post("/api/tasks/{task_id}/cancel")

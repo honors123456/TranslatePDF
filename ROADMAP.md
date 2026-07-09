@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-阶段 3：前端 —— 上传页、设置页（引擎+Key+连通性测试）、进度页、预览下载页。
+阶段 4：打包 —— Docker Compose + 端到端验证。
 
 ## 已完成
 
@@ -18,12 +18,16 @@
 - 2026-07-09 **阶段 1 后端 API 完成并端到端验证**：backend/app/{main,tasks,engines}.py。上传+建任务（multipart，100MB 上限）、SSE 进度（轮询快照式，全阶段推送后自动关流）、下载 dual/mono（200，4.2MB/2.1MB）、取消（3 秒内转 cancelled）全部实测通过；uvicorn 日志核查 API Key 零泄漏。
 - 2026-07-09 **阶段 2 翻译适配层完成（代码级）**：engines.py 统一四引擎——DeepSeek（已实测）、自定义 OpenAI 兼容、Claude（走 https://api.anthropic.com/v1/ OpenAI 兼容端点，官方文档已核实，默认 claude-opus-4-8）、Gemini（默认 gemini-2.5-flash，待确认）。Claude/Gemini 需真实 Key 才能实测。
 
+- 2026-07-09 后端补充：/api/test-connection（四引擎统一走各自 OpenAI 兼容端点发最小请求，DeepSeek 实测 ok）；下载接口支持 inline=true 供 iframe 预览。
+- 2026-07-09 **阶段 3 前端完成**：Next.js 16 + React 19 + Tailwind 4 单页应用（frontend/app/page.tsx + lib/api.ts）——引擎设置（四引擎切换、Key/模型/BaseURL、localStorage 持久化、连通性测试）、上传提交（页码范围、目标语言）、任务列表（SSE 实时进度条、取消、下载 dual/mono、iframe 在线预览）。npm run build 通过；dev 服务 SSR 冒烟验证八项 UI 元素齐全。
+
 ## 进行中
 
-- 阶段 3 前端：尚未开始。
+- 阶段 4 打包：尚未开始。
 
 ## 待办
-- 阶段 4 打包：Docker Compose + 端到端验证。
+
+- 浏览器人工点验前端完整交互流程（上传→进度→预览→下载）。
 
 ## 阻塞
 
@@ -32,7 +36,8 @@
 ## 待确认
 
 - Claude / Gemini 引擎映射未用真实 Key 实测（DeepSeek 已实测通过）。
-- Gemini 默认模型名 gemini-2.5-flash 未核实是否最新。
+- Gemini 默认模型名 gemini-2.5-flash、其 OpenAI 兼容测试端点 generativelanguage.googleapis.com/v1beta/openai/ 均未核实。
+- 在线预览用 iframe + 浏览器内建 PDF 查看器实现，未按 CLAUDE.md 原定的 pdf.js（效果等价、实现更简，需主人确认是否接受并同步修订 CLAUDE.md）。
 
 ## 最近验证
 
