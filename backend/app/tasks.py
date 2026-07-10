@@ -94,6 +94,7 @@ class TaskManager:
                 lang_out=lang_out,
                 output=str(self.output_root / task_id),
                 qps=20,
+                no_auto_extract_glossary=True,
             ),
             pdf=PDFSettings(
                 pages=pages,
