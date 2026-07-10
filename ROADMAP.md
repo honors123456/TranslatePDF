@@ -30,6 +30,7 @@ MVP 完成，待浏览器人工点验。
 - 2026-07-09 版面分析 GPU 加速：换装 onnxruntime-directml + app/gpu_patch.py（代理命名空间只覆盖 doclayout 模块的 provider 选择，上游 babeldoc 在非 macOS 强制 CPU）。实测 attention.pdf 5 页：CPU 0.89s/页 → DML 0.11s/页（约 8 倍）。回退：卸载 onnxruntime-directml 装回 onnxruntime 即自动回 CPU。
 - 2026-07-09 输出 PDF 后处理：app/clean_pdf.py 用 pymupdf rawdict 定位 \x03（ETX，来自上游 Adobe glyphlist controlETX→U+0003 映射）逐字符清理，集成在 tasks.py 翻译完成钩子中自动执行。测试：108 个污染字符全部清除，零残留。
 - 2026-07-10 Token 优化：TranslationSettings 加 no_auto_extract_glossary=True，关闭翻译前的自动术语提取轮次（省 20-30% token），代价是长文档术语译名一致性略降。后端已重启生效。
+- 2026-07-10 **Housekeeping（磁盘清理 + 内存回收 + 并发闸）**：全部收敛在 tasks.py，main.py 仅加 lifespan 钩子，前端零改动。① 并发闸 asyncio.Semaphore(2)，超出任务在 _run 内排队、status 保持 running、stage="排队中"；② 磁盘：翻译结束即删源文件目录，输出保留 2h 后由后台 GC（每 10 分钟）连同内存 tasks 记录一起回收；③ 启动清空 uploads/outputs 遗留孤儿目录（契合内存态、重启即失语义）。验证：startup_cleanup、_gc_once（超期回收 + running/未超期保留）、信号量初值、start_gc/stop_gc、FastAPI lifespan 启停均通过（scripts 外的临时脚本验证）；真实翻译端到端因测试 Key 已作废未跑。
 
 ## 进行中
 

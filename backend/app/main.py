@@ -4,6 +4,7 @@ import asyncio
 import json
 import re
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Form, HTTPException, UploadFile
@@ -22,15 +23,24 @@ UPLOAD_DIR = DATA_ROOT / "uploads"
 OUTPUT_DIR = DATA_ROOT / "outputs"
 MAX_UPLOAD_BYTES = 100 * 1024 * 1024
 
-app = FastAPI(title="TranslationPDF")
+manager = TaskManager(output_root=OUTPUT_DIR, upload_root=UPLOAD_DIR)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    manager.startup_cleanup()  # 清空遗留孤儿目录
+    manager.start_gc()  # 后台定时回收超期任务
+    yield
+    manager.stop_gc()
+
+
+app = FastAPI(title="TranslationPDF", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-manager = TaskManager(output_root=OUTPUT_DIR)
 
 
 @app.get("/api/health")
