@@ -11,6 +11,7 @@ from babeldoc.babeldoc_exception.BabelDOCException import ExtractTextError
 from pdf2zh_next import high_level as pdf2zh_high_level
 
 from .clean_pdf import clean_pdf
+from .ocr_background import prepare_page
 
 logger = logging.getLogger(__name__)
 _original_single = high_level._do_translate_single
@@ -82,6 +83,7 @@ def install(settings) -> None:
         return config
 
     def translate_page(monitor, config):
+        prepare_page(config)
         result, untranslated = translate_or_preserve(monitor, config, output)
         # 分段按原页序执行；单页文档的根 monitor 同样使用 part_index=0。
         page_number = monitor.part_index + 1
