@@ -7,14 +7,16 @@ export interface Settings {
   apiKeys: Partial<Record<EngineType, string>>;
   models: Partial<Record<EngineType, string>>;
   baseUrl: string;
+  ollamaHost: string;
   langOut: string;
 }
 
 export const defaultSettings: Settings = {
-  engineType: "deepseek",
+  engineType: "codex",
   apiKeys: {},
   models: {},
   baseUrl: "",
+  ollamaHost: "http://127.0.0.1:11434",
   langOut: "zh",
 };
 
@@ -23,6 +25,8 @@ export const ENGINE_LABELS: Record<EngineType, string> = {
   openai_compatible: "OpenAI 兼容端点",
   claude: "Claude",
   gemini: "Gemini",
+  ollama: "本地模型（Ollama）",
+  codex: "Codex 账号额度",
 };
 
 export function loadSettings(): Settings {
@@ -41,8 +45,9 @@ export function engineConfigFrom(settings: Settings): EngineConfig {
   const t = settings.engineType;
   return {
     type: t,
-    api_key: settings.apiKeys[t] ?? "",
+    api_key: t === "codex" || t === "ollama" ? "" : settings.apiKeys[t] ?? "",
     model: settings.models[t] || undefined,
     base_url: t === "openai_compatible" ? settings.baseUrl : undefined,
+    host: t === "ollama" ? settings.ollamaHost : undefined,
   };
 }

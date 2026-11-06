@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { readTaskSession, saveTaskSession } from "@/lib/task-session";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   TaskSnapshot,
@@ -8,6 +9,8 @@ import {
   createTask,
   downloadUrl,
   eventsUrl,
+  API_BASE,
+  previewUrl,
 } from "@/lib/api";
 import {
   Settings,
@@ -30,25 +33,21 @@ export default function Home() {
   const [pages, setPages] = useState("");
   const [notice, setNotice] = useState("");
   const [dragging, setDragging] = useState(false);
+  const [reconnecting, setReconnecting] = useState<Record<string, boolean>>({});
+  const [sessionLoaded, setSessionLoaded] = useState(false);
+  const [originalUrls, setOriginalUrls] = useState<Record<string, string>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const originalInputRef = useRef<HTMLInputElement>(null);
   const sourcesRef = useRef<Map<string, EventSource>>(new Map());
   // 原文预览用浏览器本地 objectURL，不经后端；仅本次会话有效
   const originalUrlsRef = useRef<Map<string, string>>(new Map());
 
-  useEffect(() => {
-    setSettings(loadSettings());
-    const sources = sourcesRef.current;
-    const urls = originalUrlsRef.current;
-    return () => {
-      sources.forEach((s) => s.close());
-      urls.forEach((u) => URL.revokeObjectURL(u));
-    };
-  }, []);
-
   const watchTask = useCallback((id: string) => {
+    sourcesRef.current.get(id)?.close();
     const source = new EventSource(eventsUrl(id));
     sourcesRef.current.set(id, source);
     source.onmessage = (msg) => {
+      setReconnecting((prev) => ({ ...prev, [id]: false }));
       const snapshot: TaskSnapshot = JSON.parse(msg.data);
       setTasks((prev) => prev.map((t) => (t.id === id ? snapshot : t)));
       if (snapshot.status !== "running") {
@@ -56,11 +55,62 @@ export default function Home() {
         sourcesRef.current.delete(id);
       }
     };
-    source.onerror = () => {
-      source.close();
-      sourcesRef.current.delete(id);
+    source.onerror = async () => {
+      // 保留 EventSource 的自动重连；服务重启丢失任务时明确告知。
+      setReconnecting((prev) => ({ ...prev, [id]: true }));
+      try {
+        const response = await fetch(`${API_BASE}/api/tasks/${id}`);
+        if (sourcesRef.current.get(id) !== source) return;
+        if (response.status === 404) {
+          source.close();
+          sourcesRef.current.delete(id);
+          setTasks((prev) => prev.map((task) => task.id === id
+            ? { ...task, status: "error", error: "任务已不存在，服务可能已重启或任务已过期，请重新上传。" }
+            : task));
+        } else if (response.ok) {
+          const snapshot: TaskSnapshot = await response.json();
+          if (sourcesRef.current.get(id) !== source) return;
+          setTasks((prev) => prev.map((task) => task.id === id ? snapshot : task));
+          if (snapshot.status !== "running") {
+            source.close();
+            sourcesRef.current.delete(id);
+            setReconnecting((prev) => ({ ...prev, [id]: false }));
+          }
+        }
+      } catch {
+        // 网络恢复后由 EventSource 重连并获取最新快照。
+      }
     };
   }, []);
+
+  useEffect(() => {
+    const sources = sourcesRef.current;
+    const urls = originalUrlsRef.current;
+    const timer = setTimeout(() => {
+      setSettings(loadSettings());
+      const saved = readTaskSession(window.location.search);
+      setTasks(saved.ids.map((id) => ({
+        id, filename: "正在恢复任务…", status: "running", stage: "正在连接后台任务",
+        overall_progress: 0, error: null, has_mono: false, has_dual: false,
+        created_at: 0, finished_at: null,
+      })));
+      setCurrentId(saved.currentId);
+      setSessionLoaded(true);
+      saved.ids.forEach(watchTask);
+    }, 0);
+    return () => {
+      clearTimeout(timer);
+      sources.forEach((source) => source.close());
+      sources.clear();
+      urls.forEach((url) => URL.revokeObjectURL(url));
+      urls.clear();
+    };
+  }, [watchTask]);
+
+  const taskIds = tasks.map((task) => task.id).join(",");
+  useEffect(() => {
+    if (sessionLoaded) saveTaskSession(taskIds ? taskIds.split(",") : [], currentId);
+  }, [taskIds, currentId, sessionLoaded]);
 
   const startTranslation = useCallback(
     async (file: File) => {
@@ -68,7 +118,7 @@ export default function Home() {
         return setNotice("只支持 PDF 文件");
       }
       const engine = engineConfigFrom(loadSettings());
-      if (!engine.api_key) {
+      if (engine.type !== "codex" && engine.type !== "ollama" && !engine.api_key) {
         return setNotice("尚未配置 API Key，请先到「设置」填写");
       }
       setNotice("");
@@ -80,7 +130,9 @@ export default function Home() {
           loadSettings().langOut,
           pages,
         );
-        originalUrlsRef.current.set(task.id, URL.createObjectURL(file));
+        const url = URL.createObjectURL(file);
+        originalUrlsRef.current.set(task.id, url);
+        setOriginalUrls((previous) => ({ ...previous, [task.id]: url }));
         setTasks((prev) => [task, ...prev]);
         setCurrentId(task.id);
         watchTask(task.id);
@@ -95,7 +147,7 @@ export default function Home() {
 
   // ---------- 全屏双栏预览（翻译中/完成） ----------
   if (current) {
-    const originalUrl = originalUrlsRef.current.get(current.id);
+    const originalUrl = originalUrls[current.id];
     return (
       <div className="flex flex-col h-screen">
         <header className="flex items-center gap-4 px-4 py-2 border-b border-gray-200 dark:border-gray-700 text-sm">
@@ -166,14 +218,55 @@ export default function Home() {
                 title="original"
               />
             ) : (
-              <div className="flex h-full items-center justify-center text-sm text-gray-400">
-                原文预览不可用（页面刷新后丢失，重新上传即可）
+              <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-sm text-gray-500">
+                <p>当前浏览器没有保存原文文件。</p>
+                <p>重新选择本地 PDF 即可恢复左侧原文对照，不会上传或重新翻译。</p>
+                <button onClick={() => originalInputRef.current?.click()}
+                  className="rounded-lg border border-blue-600 px-4 py-2 text-blue-600 hover:bg-blue-50">
+                  选择原文件恢复对照
+                </button>
+                <input ref={originalInputRef} type="file" accept=".pdf" className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = "";
+                    if (!file || !file.name.toLowerCase().endsWith(".pdf")) return;
+                    const url = URL.createObjectURL(file);
+                    const previous = originalUrlsRef.current.get(current.id);
+                    if (previous) URL.revokeObjectURL(previous);
+                    originalUrlsRef.current.set(current.id, url);
+                    setOriginalUrls((urls) => ({ ...urls, [current.id]: url }));
+                  }} />
               </div>
             )}
           </div>
-          {/* 右栏：译文（翻译中显示进度，完成后显示纯译文 PDF） */}
+          {/* 右栏：逐页追加已排版译文，后续页面到达时保留滚动位置。 */}
           <div className="min-h-0">
-            {current.status === "done" && current.has_mono ? (
+            {(current.preview_pages ?? 0) > 0 ? (
+              <div className="h-full overflow-y-auto bg-gray-100 dark:bg-gray-900" aria-label="译文预览">
+                <div className="sticky top-0 z-10 border-b border-gray-200 bg-white px-4 py-2 text-sm dark:border-gray-700 dark:bg-gray-800" role="status">
+                  已生成 {current.preview_pages}{current.preview_total ? ` / ${current.preview_total}` : ""} 页预览
+                  {current.status === "running" && "，其余页面继续后台翻译"}
+                  {reconnecting[current.id] && "，进度连接中断，正在重连（显示已接收预览）"}
+                  {current.status === "done" && "，完整 PDF 可在上方下载"}
+                  {current.status === "cancelled" && "，任务已取消"}
+                  {current.status === "error" && `，任务失败：${current.error ?? "未知错误"}`}
+                </div>
+                <div className="mx-auto max-w-5xl space-y-4 p-4">
+                  {Array.from({ length: current.preview_pages ?? 0 }, (_, index) => (
+                    <figure key={`${current.id}-${index}`}>
+                      {/* 页面由后端按原比例生成，避免更新整份 PDF 重置阅读位置。 */}
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={previewUrl(current.id, index + 1)} alt={`第 ${index + 1} 页译文`}
+                        loading={index === 0 ? "eager" : "lazy"} className="block h-auto w-full bg-white" />
+                      <figcaption className="mt-1 text-center text-xs text-gray-500">
+                        第 {index + 1} 页
+                        {current.untranslated_pages?.includes(index + 1) && " · 未识别到可翻译段落，保留原页"}
+                      </figcaption>
+                    </figure>
+                  ))}
+                </div>
+              </div>
+            ) : current.status === "done" && current.has_mono ? (
               <iframe
                 src={downloadUrl(current.id, "mono", true)}
                 className="w-full h-full"
@@ -191,7 +284,17 @@ export default function Home() {
                   {current.stage || "准备中"} · {current.overall_progress}%
                 </p>
                 <p className="text-xs text-gray-400">
-                  翻译完成后此处自动显示译文
+                  {reconnecting[current.id] ? "无法获取最新进度，正在重连后端；恢复连接后确认后台任务状态。" : (
+                    <>
+                      {current.stage_total != null && current.stage_total > 0 &&
+                        `当前阶段 ${current.stage_current ?? 0} / ${current.stage_total} · `}
+                      {current.updated_at && `最近进度更新 ${new Date(current.updated_at * 1000).toLocaleTimeString()} · `}
+                      百分比按阶段估算，不代表剩余时间
+                    </>
+                  )}
+                </p>
+                <p className="text-xs text-gray-400">
+                  首个页面翻译并排版完成后，此处开始显示译文，其余页面继续后台翻译
                 </p>
               </div>
             ) : (

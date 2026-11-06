@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 import re
 import uuid
 from contextlib import asynccontextmanager
@@ -12,16 +13,22 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import ValidationError
 
-from . import gpu_patch
 from .engines import EngineConfig, test_connection
+from .model_catalog import list_models
 from .tasks import TaskManager
 
-gpu_patch.apply()
+for logger_name in ("app.tasks", "app.gpu_patch", "app.section_translator", "pdf2zh_next.high_level"):
+    stage_logger = logging.getLogger(logger_name)
+    if not stage_logger.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s"))
+        stage_logger.addHandler(handler)
+    stage_logger.setLevel(logging.INFO)
+    stage_logger.propagate = False
 
 DATA_ROOT = Path(__file__).resolve().parent.parent.parent / "data"
 UPLOAD_DIR = DATA_ROOT / "uploads"
 OUTPUT_DIR = DATA_ROOT / "outputs"
-MAX_UPLOAD_BYTES = 100 * 1024 * 1024
 
 manager = TaskManager(output_root=OUTPUT_DIR, upload_root=UPLOAD_DIR)
 
@@ -58,6 +65,17 @@ async def test_engine_connection(engine: EngineConfig):
         return {"ok": False, "detail": str(exc)}
 
 
+@app.post("/api/models")
+async def engine_models(engine: EngineConfig):
+    try:
+        async with asyncio.timeout(45):
+            return {"models": await list_models(engine)}
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(502, "模型目录刷新失败，请检查网络、服务地址与登录状态。") from exc
+
+
 @app.post("/api/tasks")
 async def create_task(
     file: UploadFile,
@@ -78,14 +96,8 @@ async def create_task(
     safe_name = re.sub(r"[^\w.\-一-鿿]", "_", Path(file.filename).name)
     pdf_path = UPLOAD_DIR / upload_id / safe_name
     pdf_path.parent.mkdir(parents=True, exist_ok=True)
-    size = 0
     with pdf_path.open("wb") as out:
         while chunk := await file.read(1024 * 1024):
-            size += len(chunk)
-            if size > MAX_UPLOAD_BYTES:
-                out.close()
-                pdf_path.unlink(missing_ok=True)
-                raise HTTPException(413, "file too large (max 100MB)")
             out.write(chunk)
 
     try:
@@ -112,12 +124,21 @@ async def task_events(task_id: str):
     async def event_stream():
         # 轮询快照推送：实现简单且断线重连天然安全，自用场景足够
         last_payload = None
+        idle_ticks = 0
         while True:
-            payload = json.dumps(task.snapshot(), ensure_ascii=False)
+            snapshot = task.snapshot()
+            payload = json.dumps(snapshot, ensure_ascii=False)
             if payload != last_payload:
                 last_payload = payload
+                idle_ticks = 0
                 yield f"data: {payload}\n\n"
-            if task.status != "running":
+            else:
+                idle_ticks += 1
+                if idle_ticks >= 30:
+                    idle_ticks = 0
+                    yield ": heartbeat\n\n"
+            # 以本次发送的快照判断结束，避免 yield 期间完成而漏发最终状态。
+            if snapshot["status"] != "running":
                 break
             await asyncio.sleep(0.5)
 
@@ -144,6 +165,19 @@ async def download(task_id: str, kind: str = "dual", inline: bool = False):
         filename=path.name,
         content_disposition_type="inline" if inline else "attachment",
     )
+
+
+@app.get("/api/tasks/{task_id}/preview/{page_number}")
+async def preview_page(task_id: str, page_number: int):
+    task = manager.get(task_id)
+    if task is None:
+        raise HTTPException(404, "task not found")
+    if page_number < 1 or page_number > task.preview_pages:
+        raise HTTPException(404, "preview page not ready")
+    path = OUTPUT_DIR / task.id / "preview" / f"{page_number}.png"
+    if not path.is_file():
+        raise HTTPException(404, "preview page not available")
+    return FileResponse(path, media_type="image/png")
 
 
 @app.post("/api/tasks/{task_id}/cancel")

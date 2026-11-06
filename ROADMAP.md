@@ -6,6 +6,22 @@ MVP 完成，待浏览器人工点验。
 
 ## 已完成
 
+- 2026-11-06 17:33 优化预览生效与刷新恢复：前端保存标签页任务 ID、同步任务地址，刷新或直接打开任务链接后重新订阅 SSE；断线 GET 核对可更新快照，任务过期明确提示；原文对照支持本地重新选择，不重新上传／翻译。修复首页 ref 渲染和初始化 effect 的 ESLint 问题。新构建已加载到前端服务，按用户要求保持手动停止的后端不变。
+- 2026-11-06 17:17 修复单页渐进管线遇到无段落页时整本终止：仅对明确的 `ExtractTextError: The document contains no paragraphs.` 保留原页并生成对应 mono／dual 分段，继续后续页面；SSE 标记未翻译页，前端明确显示原页保留原因。CID、扫描检测、网络及取消仍保留原错误语义。源码及本地回归通过，未重启服务。
+- 2026-11-06 17:09 渐进译文预览实现：实际 spawn 子进程使用 BabelDOC 原生单页策略，每页排版后原子发布 PNG，经 SSE 通知连续就绪页数，前端按原页序追加并保留已有阅读位置；取消／失败仍可读已发布页，最终继续合并双语和纯译文 PDF。Codex 合批以页为界，增加逐页处理开销。55 项回归、真实两页本地回传管线及前端构建通过；当前运行任务未重启，新代码尚未部署到服务。
+- 2026-11-06 16:51 所有引擎的模型控件统一改为下拉列表，移除手动输入；补齐加载、空列表与原模型不在目录中的提示，无可选模型时禁用连接测试。保留每周刷新、手动刷新及旧列表缓存。
+- 2026-11-06 16:47 取消上传接口的 100 MB 应用层限制，保留 1 MB 分块落盘；设置页新增动态模型候选列表，覆盖 Codex、DeepSeek、Claude、Gemini、OpenAI 兼容端点与 Ollama。浏览器按配置隔离缓存，每 7 天在设置页使用时刷新，关闭期间下次打开补刷，支持手动刷新；失败保留旧列表，不自动替换已选模型。
+
+- 2026-10-16 16:53 目录行保护适配：新增 `backend/app/toc_layout.py`，在实际翻译子进程替换段落识别器，识别连续／间隔点引导线，将目录行拆开并保留行内编号、引导线、页码原坐标，仅翻译标题。新增本地验证脚本和 4 项回归；未重启服务，真实译文排版待验证。
+- 2026-10-15 15:44 Codex 批次请求改为最多 8 路并发：设置 `pool_max_workers=8`、`qps=8`，仍限制单个 Codex 任务；拆批回退在原线程执行。按要求取消旧任务 `19f30bea79cb`，停止于 2486/10610 段，随后重启后端加载新配置，健康检查通过。41 项回归及 Ruff 通过；未重新提交整书或验证真实 8 路账号吞吐。
+- 2026-10-15 14:15 失败诊断修复并加载：增加项目内 IPC Callback 适配，保留无进度超时及最后阶段、段落计数，避免上游清理产生的 -15 覆盖原始超时；保持原 30 分钟保护及取消语义。补齐父进程日志输出、批次请求编号／开始／耗时／安全失败分类，覆盖 JSON、ID、占位符、CLI 退出及明确的超时／额度／限流标记。38 项回归通过，按授权重启后端，健康检查正常；整书重试当前状态见待办。
+- 2026-10-15 09:55 Codex 小节合批实现并启用：通过版面标题启发式分组，跨页延续，每批最多 24 段及约 12,000 正文字符，超长单段单独处理。保留段落 ID、公式占位符及原排版回填，失败批次拆分至单段。33 项回归、本地管线对比及授权后的真实样例首屏验证通过。已按授权重启后端，旧整书任务中断，新后端健康正常。标题分组不保证与目录逐节对应，整书质量及真实前后性能对比仍未验证。
+- 2026-10-15 09:18 进度可靠性修复并启用：前端保留 SSE 自动重连并提示断线，任务不存在时明确报错；后端增加心跳并保证发送最终快照，过滤无效进度并防止回退，增加阶段计数及更新时间。PDF 后处理在线程执行，结束后才发布文件与 100%；取消等待文件操作完成，重复取消不会打断等待。源码验证完成，按授权重启前后端，健康接口与首页检查通过；真实翻译及浏览器交互待验证。
+- 2026-10-14 14:08 GPU 版面识别运行服务启用：按授权重启后端，启动清理按现有逻辑完成，`GET /api/health` 返回 `status=ok`，Uvicorn 日志确认应用启动完成。当前服务已载入 GPU worker 入口；实际 GPU 推理速度仍以 14:03 的隔离基准管线数据为准，尚未对真实用户 PDF 发起新任务。
+- 2026-10-14 14:03 GPU 版面识别子进程修复与耗时验证完成：增加 `backend/app/translation_worker.py`，在真实 Windows spawn 翻译入口初始化 DirectML，保留原管线进度、取消和异常处理；补齐顺序执行、Session 锁和 CPU 初始化回退。任务 API 增加 `stage_seconds`，日志记录阶段耗时和实际 provider。17 项回归测试及完整本地管线通过。
+- 2026-10-14 10:44 Codex 页面连接故障修复并启用：后端缺少 IDE 的 PATH 时自动查找已安装的官方 VS Code 扩展 CLI，避免误用不支持当前模型的旧 npm 版；失败消息保留脱敏后的具体原因。经授权重启后端，运行健康接口及 `gpt-6-luna` 真实连接接口均通过。
+- 2026-10-14 10:22 Codex 账号额度翻译接入完成：使用本机 CLI 的 ChatGPT 登录，默认 `gpt-6-luna`，无需 API Key。前端新增引擎选择、免 Key 上传和连接测试；任务与请求串行，支持超时和取消。使用与验证入口见 `README.md`、`scripts/validate_codex.py`；浏览器完整交互验证见待办。
+
 - 2026-07-09 方案确定：FastAPI + Next.js，核心管线 pdf2zh-next（BabelDOC 官方入口），BYOK，自用定位（详见 CLAUDE.md）。
 - 2026-07-09 核实选型：BabelDOC v0.6.3（2026-06 发布，活跃）；pdf2zh-next v2.6.x 为官方推荐 Python API 入口（`high_level.do_translate_async_stream`）。
 - 2026-07-09 仓库初始化：git init（main 分支）、.gitignore、CLAUDE.md、ROADMAP.md。
@@ -13,32 +29,20 @@ MVP 完成，待浏览器人工点验。
 - 2026-07-09 验证脚本 scripts/validate_pipeline.py：配置构造与 validate_settings() 已用 dummy key 跑通（DeepSeekSettings 会 transform 为 OpenAI 兼容配置，指向 https://api.deepseek.com/v1）。
 - 2026-07-09 babeldoc 资产预下载完成（DocLayout YOLO onnx、34 字体、146 CMap，缓存于 ~/.cache/babeldoc）。注：pdf2zh_next 2.9.0 的 --warmup 在下载完成后仍断言需要输入文件而退出码 1，属上游小缺陷，资产本身完整。
 
-- 2026-07-09 **阶段 0 管线验证通过**：attention.pdf 前 2 页经 DeepSeek（deepseek-chat）翻译，37.4s 产出 mono + dual 两个 PDF；人工核对双语版排版完整（左右对照、公式/页眉/脚注保留、中文字体正常）。少量段落（作者名等）因译文与原文相同触发 fallback 警告，属正常行为。
 
-- 2026-07-09 **阶段 1 后端 API 完成并端到端验证**：backend/app/{main,tasks,engines}.py。上传+建任务（multipart，100MB 上限）、SSE 进度（轮询快照式，全阶段推送后自动关流）、下载 dual/mono（200，4.2MB/2.1MB）、取消（3 秒内转 cancelled）全部实测通过；uvicorn 日志核查 API Key 零泄漏。
-- 2026-07-09 **阶段 2 翻译适配层完成（代码级）**：engines.py 统一四引擎——DeepSeek（已实测）、自定义 OpenAI 兼容、Claude（走 https://api.anthropic.com/v1/ OpenAI 兼容端点，官方文档已核实，默认 claude-opus-4-8）、Gemini（默认 gemini-2.5-flash，待确认）。Claude/Gemini 需真实 Key 才能实测。
 
-- 2026-07-09 后端补充：/api/test-connection（四引擎统一走各自 OpenAI 兼容端点发最小请求，DeepSeek 实测 ok）；下载接口支持 inline=true 供 iframe 预览。
-- 2026-07-09 **阶段 3 前端完成**：Next.js 16 + React 19 + Tailwind 4 单页应用（frontend/app/page.tsx + lib/api.ts）——引擎设置（四引擎切换、Key/模型/BaseURL、localStorage 持久化、连通性测试）、上传提交（页码范围、目标语言）、任务列表（SSE 实时进度条、取消、下载 dual/mono、iframe 在线预览）。npm run build 通过；dev 服务 SSR 冒烟验证八项 UI 元素齐全。
 
-- 2026-07-09 **阶段 4 改为启动脚本方案**（本机无 Docker，经主人确认不装）：start.bat → scripts/start.ps1，一键拉起后端 uvicorn + 前端 next start 并打开浏览器；首次运行自动构建前端。实测：双服务启动成功、health ok、页面渲染正常；踩坑记录——PS 5.1 要求 .ps1 为 UTF-8 带 BOM，否则中文注释按 GBK 解析导致语法错误。CLAUDE.md 部署条目已同步修订。
-
-- 2026-07-09 性能调优：翻译并发 qps 默认 4 → 20（pool_max_workers 跟随），翻译阶段预计提速 2–4 倍；后端已重启生效。
-
-- 2026-07-09 前端改版（按主人反馈）：引擎配置独立为 /settings 页（lib/settings.ts 共享 localStorage 读写）；主页改全屏拖拽上传（拖入即翻译）；翻译开始即切全屏双栏预览——左栏原文（浏览器 objectURL，不经后端）、右栏翻译中显示进度、完成后自动加载纯译文 PDF。构建通过，双页面冒烟验证通过。
-
-- 2026-07-09 版面分析 GPU 加速：换装 onnxruntime-directml + app/gpu_patch.py（代理命名空间只覆盖 doclayout 模块的 provider 选择，上游 babeldoc 在非 macOS 强制 CPU）。实测 attention.pdf 5 页：CPU 0.89s/页 → DML 0.11s/页（约 8 倍）。回退：卸载 onnxruntime-directml 装回 onnxruntime 即自动回 CPU。
-- 2026-07-09 输出 PDF 后处理：app/clean_pdf.py 用 pymupdf rawdict 定位 \x03（ETX，来自上游 Adobe glyphlist controlETX→U+0003 映射）逐字符清理，集成在 tasks.py 翻译完成钩子中自动执行。测试：108 个污染字符全部清除，零残留。
-- 2026-07-10 Token 优化：TranslationSettings 加 no_auto_extract_glossary=True，关闭翻译前的自动术语提取轮次（省 20-30% token），代价是长文档术语译名一致性略降。后端已重启生效。
-- 2026-07-10 **Housekeeping（磁盘清理 + 内存回收 + 并发闸）**：全部收敛在 tasks.py，main.py 仅加 lifespan 钩子，前端零改动。① 并发闸 asyncio.Semaphore(2)，超出任务在 _run 内排队、status 保持 running、stage="排队中"；② 磁盘：翻译结束即删源文件目录，输出保留 2h 后由后台 GC（每 10 分钟）连同内存 tasks 记录一起回收；③ 启动清空 uploads/outputs 遗留孤儿目录（契合内存态、重启即失语义）。验证：startup_cleanup、_gc_once（超期回收 + running/未超期保留）、信号量初值、start_gc/stop_gc、FastAPI lifespan 启停均通过（scripts 外的临时脚本验证）；真实翻译端到端因测试 Key 已作废未跑。
-
-## 进行中
-
-- 无。
 
 ## 待办
 
-- 浏览器人工点验前端完整交互流程（上传→进度→预览→下载）。注意：测试用 DeepSeek Key 已作废（实测 401），需在设置页填新 Key。
+- 已有原书第 3 页预览图实际观察到中英文标题叠字，问题位于管线生成的图片内容，非浏览器重复渲染；未在本次前端恢复改动中修复。
+- 渐进预览待现有任务完成后加载服务并验证浏览器追加与滚动行为；旧任务不能中途切换管线。两页本地管线已生成完整文件，但退出阶段仍观察到上游日志队列关闭／异步生成器清理的 `-15` 警告，需单独定位，不作为预览文件损坏的证据。
+- 动态模型目录的真实账号查询及浏览器候选选择待点验；新前端已运行并通过 HTTP 响应确认模型下拉框。后端当前未运行，启动被自动审批以历史文件清理风险拦截，待确认后恢复模型列表接口。
+
+- Fundamentals of Computer Graphics 旧重试任务 `19f30bea79cb` 已按要求取消（2486/10610 段），8 路配置已加载，尚未重新提交整书。原书仍在用户 Downloads 目录（17,999,968 字节），原件未修改；新的真实 8 路翻译及整书结果待验证。
+
+- 浏览器点验 Codex 完整交互流程（上传→进度→预览→下载）。Codex 模式无需 API Key，当前运行连接接口已验证成功。
+- 下载 translategemma:12b，点验本地连接测试与 PDF 翻译质量；根据显存和实测吞吐决定是否调整为 4B 或提高 qps。
 
 ## 阻塞
 
@@ -46,11 +50,33 @@ MVP 完成，待浏览器人工点验。
 
 ## 待确认
 
+- 整书任务 `db5e77dc4cba` 于 2026-10-15 13:31:42 在 8012/10610 段时失败，运行约 3 小时 35 分钟，错误为子进程退出 -15。历史日志缺少批次具体原因与最后进度时间，无法确认触发终止的原始原因；诊断修复不构成该历史任务根因已解决的证据。
+
 - Claude / Gemini 引擎映射未用真实 Key 实测（DeepSeek 已实测通过）。
 - Gemini 默认模型名 gemini-2.5-flash、其 OpenAI 兼容测试端点 generativelanguage.googleapis.com/v1beta/openai/ 均未核实。
 - 在线预览用 iframe + 浏览器内建 PDF 查看器实现，未按 CLAUDE.md 原定的 pdf.js（效果等价、实现更简，需主人确认是否接受并同步修订 CLAUDE.md）。
 
 ## 最近验证
 
-- 2026-07-09 后端 API 端到端：POST /api/tasks（attention.pdf 第 1 页 + DeepSeek）→ SSE 进度全阶段推送 → done → 下载 dual/mono 成功 → 第二任务 cancel 成功。
-- 2026-07-09 scripts/validate_pipeline.py + DEEPSEEK_API_KEY：2 页翻译 37.4s，产出 data/outputs/attention.no_watermark.zh.{mono,dual}.pdf，双语排版人工核对通过。
+- 2026-11-06 17:33 前端恢复与预览：生产构建／TypeScript、首页与新增模块 ESLint、Impeccable 机械检查、任务会话逻辑检查通过。独立 Playwright 浏览器使用真实已有预览文件与模拟 SSE，验证 2→3 页追加时 scrollTop 保持 400、刷新恢复同一任务、从历史重新打开、本地原文恢复及 404 任务提示，后端写请求为 0；已查看浏览器截图 `.tmp/task-preview-ui/preview-restored.png`，其中原书第 3 页存在排版叠字。仅重启前端，HTTP 200；后端由用户手动停止，未验证真实实时续跑，不把回放当作真实管线验证。
+- 2026-11-06 17:17 无段落页回归：58 项 unittest、相关 Ruff、前端生产构建及 TypeScript 通过；真实段落识别器重现空段落异常，实际 spawn 的文字／空白／文字三页管线预览依次发布 1、2、3，最终三页纯译文完成，第 2 页空白保留，第 1、3 页均含中文，`untranslated_pages=[2]`。报告位于 `.tmp/preview-validation/20261106-171557/report.json`。退出仍有已记录的上游管道／日志队列关闭警告；未验证用户原书、浏览器交互，未重启服务。
+- 2026-11-06 17:09 渐进预览：55 项 unittest、相关 Ruff、Git diff 检查、前端生产构建及 TypeScript 通过。`scripts/validate_preview.py` 真实 spawn、本地固定中文回传观察到 `running` 期间页数依次为 1、2，最终 mono／dual 完成、纯译文共两页且均含中文；首屏 PNG 已实际查看。产物与报告位于 `.tmp/preview-validation/20261106-170749/`。退出有上游清理警告，未验证浏览器交互、真实大模型或整书耗时，未重启服务。
+- 2026-11-06 16:54 页面生效排查：旧前端响应不含 `model-list-status`；启动新构建后，`http://localhost:3000/settings` 返回 HTTP 200 且包含该标识，确认运行服务已提供下拉控件。8000 端口后端未运行，启动请求被自动审批拦截，未执行清理；浏览器视觉与真实模型查询未验证。
+- 2026-11-06 16:51 模型下拉选择：前端生产构建及 TypeScript 检查通过，Impeccable 对设置页的机械检查无发现；未执行浏览器交互及真实模型目录查询，未重启运行中的服务。
+- 2026-11-06 16:49 上传限制与模型目录：隔离测试进程用户配置目录后，50 项后端 unittest、相关 Ruff 检查及前端生产构建／TypeScript 通过。101 MB 模拟上传保持分块写入；模型目录 mock 覆盖凭据请求头、分页、Codex 初始化及清理、空目录与错误脱敏；前端逻辑检查覆盖 7 天过期边界、损坏缓存与凭据隔离。设置页 ESLint 仍有原有初始化 effect 的 1 项错误，新增目录逻辑无 lint 错误。未执行真实账号模型查询、浏览器交互或服务重启。
+
+- 2026-10-16 16:53 目录修复验证：45 项后端 unittest 和相关文件 Ruff 通过。原书第 6、7 页只读副本通过本地固定中文回传管线，mono 两页渲染确认目录子项逐行、引导线及页码保留；产物位于 `.tmp/toc-validation/20261016-115533/`。固定测试回传未完整保留上游公式占位符，部分章节编号缺失，尚不能作为章节编号完整性或真实译文长度适配的验收证据；未修改用户 PDF，未调用外部模型，未重启服务。
+- 2026-10-15 15:44 8 路并发验证：41 项 unittest、Ruff、Git diff 检查通过。使用上游 PriorityThreadPoolExecutor 对 16 个批次进行 mock 回放，峰值同时请求数为 8，32 个段落在乱序 JSON 返回后逐段对应正确；共享取消标记使 8 个模拟 CLI 请求全部执行停止清理。旧任务 API 状态 cancelled；新后端 PID 34796，健康接口 `status=ok`，日志位于 `.tmp/codex-eight-restart/`。未发起真实模型并发请求，不代表 8 倍提速。
+- 2026-10-15 14:16 整书重试启动验证：新任务 `19f30bea79cb` 状态 running、PDF 解析 46/737 页；日志确认实际 worker 启动及 DirectML Session，新增 INFO 日志可见。仅证明任务已启动推进，不代表整书翻译完成；提交快照位于 `.tmp/diagnostics-restart/retry-task.json`。
+- 2026-10-15 14:15 诊断修复加载验证：核实并停止旧后端 PID 13480／启动器 32288，隐藏启动新后端 PID 34840；日志确认 application startup complete，健康接口返回 `status=ok`。日志位于 `.tmp/diagnostics-restart/`。未提交整书任务，原书在项目目录中已不存在。
+- 2026-10-15 14:13 失败诊断回归：38 项 unittest、Ruff 和 Git diff 检查通过。模拟真实上游 `_translate_in_subprocess` 的 IPC 超时与终止清理，最终保留 TimeoutError 及 8012/10610 段信息；正常进度、结束、取消和安全错误分类通过。未重启服务、未调用真实翻译或重试整书。
+- 2026-10-15 09:55 小节合批真实验证：按授权重启后端 PID 13480，健康接口正常，无旧后端残留翻译子进程。`scripts/validate_sections.py --real` 使用当前 Codex 登录翻译 `attention.pdf` 第 1 页，4 次请求分别含 1／5／5／6 段，结构化返回及占位符校验通过，无拆批回退，管线与生成检查约 67 秒（另执行 PDF 后处理）。mono/dual 首屏均提取到中文并实际查看渲染，未见明显重叠或裁切；作者机构局部换行不够自然。清理后首屏 ETX 均为 0。产物及报告位于 `.tmp/section-validation/20261015-095312/`；输出保留原 PDF 15 页，只翻译第 1 页。未验证整书、浏览器完整交互或真实基线提速。
+- 2026-10-15 09:49 小节合批本地验证：33 项 unittest、Ruff 及 Git diff 检查通过。`scripts/validate_sections.py` 使用公开样例前两页、本地原文回传及相同串行配置，CLI 调用 30→8（含初始化调用），翻译阶段 28.111→6.117 秒，全管线 54.32→31.47 秒；mono/dual 均生成，纯译文 PDF 全部页面提取文本及词坐标完全一致。结果位于 `.tmp/section-validation/20261015-094836/report.json`。该数据不代表真实 Codex 提速或译文质量；真实模型验证尚未授权。
+- 2026-10-15 09:18 运行服务重启验证：仅停止核实属于本项目的旧前后端及启动器，隐藏启动新版服务。后端 PID 36000，`GET /api/health` 返回 `status=ok`，日志确认应用启动完成；前端 PID 38092，首页 HTTP 200，响应包含当前构建 ID `B_ltZanLT24wabaWd0I6B`。启动清理按现有逻辑完成。未执行真实翻译或浏览器交互验证；启动日志位于 `.tmp/progress-restart/`。
+- 2026-10-15 09:11 进度回归验证：22 项后端 unittest 通过，覆盖进度回退／缺失／非有限数值、阶段计数重置、后处理期间事件循环响应与取消、重复取消、SSE 心跳与最终状态重连；前端 EventSource mock 回放覆盖短暂断线、恢复、完成和任务丢失。Ruff、Next.js 生产构建／TypeScript 及 Git diff 检查通过。未重启服务、未执行真实翻译或浏览器交互验证。
+- 2026-10-14 14:08 后端 GPU 改动启用验证：停止旧后端 PID 40760/启动器 38888，启动新后端，启动日志显示 application startup complete，`GET /api/health` 返回 `status=ok`；服务 PID 21172 监听 `127.0.0.1:8000`。启动清理后 `data/outputs` 中的历史顶层 PDF/CSV 文件仍在。尚未通过该服务执行真实 PDF 推理。
+- 2026-10-14 14:03 GPU 解析验证：`scripts/benchmark_layout.py --pipeline`，公开论文前三页、每种设备预热后 9 次识别。CPU 0.665 秒/页，DirectML 0.125 秒/页，约 5.33 倍；profiling 记录 DirectML 节点 5700 次、CPU 节点 730 次。识别框数量与类别一致，最大坐标差 0.000061 像素。完整原生 spawn 管线使用本地原文回传，版面阶段 2.237→1.115 秒，文字解析 0.282→0.276 秒，全流程 60.81→58.30 秒；生成 mono/dual，前三页提取文本一致。该结果不代表真实云端翻译耗时或译文质量；报告与 profiling 位于 `.tmp/gpu-benchmark/`，可用正式脚本重建。17 项回归、Ruff、Git diff 检查通过；当时运行服务尚未加载改动，随后于 14:08 重启启用。
+- 2026-10-14 10:44 后端运行验证：经授权停止核实属于本项目的旧后端，以原启动参数隐藏启动；新服务 PID 40760，`GET /api/health` 返回 `status=ok`，真实 `POST /api/test-connection` 返回 `ok=true, model=gpt-6-luna`。服务环境不含 IDE 的 CLI PATH，验证了修复后的自动查找；旧任务目录按启动逻辑清理，顶层历史样例文件未删除。未操作前端服务，未执行浏览器点击验证。
+- 2026-10-14 10:37 CLI 选择故障验证：运行 API 复现失败；读取本项目后端进程环境，确认 PATH 无 IDE 原生 CLI，仅 npm `0.154.0`。相同环境与账号下 npm 调用返回 HTTP 400 模型不支持，IDE `0.162.0-alpha.17.2` 成功；修复后在原后端环境执行真实引擎连接测试返回 `ok=true, model=gpt-6-luna`。11 项回归测试、Ruff、Git diff 检查通过。
+- 2026-10-14 10:22 Codex 接入验证：当前本机登录方式为 ChatGPT；`gpt-6-luna` 真实短文本翻译与公式占位符保留通过；公开论文 `attention.pdf` 第 1 页通过真实 PDF 管线，生成 mono/dual 输出，中文文本检查及第一页渲染检查通过（未见明显重叠或裁切）。8 项 mock 回归测试覆盖账号登录、拒绝 API Key 登录、空/失败/未完成回复、超时、取消和引擎设置；Ruff、Git diff 检查、前端生产构建及 TypeScript 检查通过。运行服务未重启，浏览器交互未验证。
+

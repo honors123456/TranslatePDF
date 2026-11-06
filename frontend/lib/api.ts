@@ -1,13 +1,20 @@
 export const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:8000";
 
-export type EngineType = "deepseek" | "openai_compatible" | "claude" | "gemini";
+export type EngineType =
+  | "deepseek"
+  | "openai_compatible"
+  | "claude"
+  | "gemini"
+  | "ollama"
+  | "codex";
 
 export interface EngineConfig {
   type: EngineType;
-  api_key: string;
+  api_key?: string;
   model?: string;
   base_url?: string;
+  host?: string;
 }
 
 export interface TaskSnapshot {
@@ -15,12 +22,18 @@ export interface TaskSnapshot {
   filename: string;
   status: "running" | "done" | "error" | "cancelled";
   stage: string;
+  stage_current?: number | null;
+  stage_total?: number | null;
+  updated_at?: number;
   overall_progress: number;
   error: string | null;
   has_mono: boolean;
   has_dual: boolean;
   created_at: number;
   finished_at: number | null;
+  preview_pages?: number;
+  preview_total?: number | null;
+  untranslated_pages?: number[];
 }
 
 export const DEFAULT_MODELS: Record<EngineType, string> = {
@@ -28,6 +41,8 @@ export const DEFAULT_MODELS: Record<EngineType, string> = {
   claude: "claude-opus-4-8",
   gemini: "gemini-2.5-flash",
   openai_compatible: "",
+  ollama: "translategemma:12b",
+  codex: "gpt-6-luna",
 };
 
 export async function createTask(
@@ -73,4 +88,8 @@ export function downloadUrl(id: string, kind: "dual" | "mono", inline = false) {
 
 export function eventsUrl(id: string) {
   return `${API_BASE}/api/tasks/${id}/events`;
+}
+
+export function previewUrl(id: string, page: number) {
+  return `${API_BASE}/api/tasks/${id}/preview/${page}`;
 }
